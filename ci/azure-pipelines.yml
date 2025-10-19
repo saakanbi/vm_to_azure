@@ -1,0 +1,90 @@
+
+trigger:
+  branches:
+    include: ['main']
+
+stages:
+- stage: Build
+  displayName: Build (Maven + JUnit)
+  jobs:
+  - job: maven_build
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'app/pom.xml'
+        goals: 'clean package'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/*.xml'
+        jdkVersionOption: '1.17'
+
+- stage: Scan
+  displayName: Code Quality (SonarQube)
+  dependsOn: Build
+  jobs:
+  - job: sonar
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+    - task: SonarQubePrepare@5
+      inputs:
+        SonarQube: 'SonarServiceConnection'
+        scannerMode: 'Other'
+        configMode: 'manual'
+        extraProperties: |
+          sonar.projectKey=vm2cloud-demo
+          sonar.projectName=vm2cloud-demo
+    - task: SonarQubeAnalyze@5
+    - task: SonarQubePublish@5
+      inputs:
+        pollingTimeoutSec: '300'
+
+- stage: Image
+  displayName: Build & Push Image (ACR)
+  dependsOn: Scan
+  jobs:
+  - job: docker
+    pool: { vmImage: 'ubuntu-latest' }
+    variables:
+      IMAGE_TAG: '$(Build.SourceVersion)'
+    steps:
+    - task: Docker@2
+      displayName: Build & Push
+      inputs:
+        command: 'buildAndPush'
+        repository: 'vm2cloud-demo'
+        dockerfile: 'app/Dockerfile'
+        containerRegistry: 'AzureContainerRegistryConnection'
+        tags: |
+          $(IMAGE_TAG)
+
+- stage: Deploy
+  displayName: Deploy to AKS
+  dependsOn: Image
+  jobs:
+  - deployment: deploy_to_aks
+    environment: 'staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            displayName: Get AKS Credentials
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                RG=$(az group list --query "[?contains(name,'vm2cloud')].name" -o tsv | head -n1)
+                AKS=$(az aks list -g $RG --query "[0].name" -o tsv)
+                ACR=$(az acr list -g $RG --query "[0].name" -o tsv)
+                echo "##vso[task.setvariable variable=RG]$RG"
+                echo "##vso[task.setvariable variable=AKS]$AKS"
+                echo "##vso[task.setvariable variable=ACR]$ACR"
+                az aks get-credentials -g $RG -n $AKS --overwrite-existing
+          - script: |
+              sed -i "s|__ACR__|$(ACR)|g" k8s/deployment.yaml
+              sed -i "s|__TAG__|$(Build.SourceVersion)|g" k8s/deployment.yaml
+              kubectl apply -f k8s/deployment.yaml
+              kubectl apply -f k8s/service.yaml
+              kubectl rollout status deploy/vm2cloud-demo --timeout=180s
+            displayName: kubectl apply & wait
