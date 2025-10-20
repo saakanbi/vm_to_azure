@@ -1,0 +1,48 @@
+name: VM to Azure CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Build with Maven
+      run: |
+        cd app
+        mvn clean package -DskipTests=false
+    
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Login to ACR
+      run: az acr login --name vm2cloudacr
+    
+    - name: Build and push Docker image
+      run: |
+        IMAGE_TAG=${{ github.sha }}
+        docker build -t vm2cloudacr.azurecr.io/vm2cloud-demo:${IMAGE_TAG} -f app/Dockerfile .
+        docker push vm2cloudacr.azurecr.io/vm2cloud-demo:${IMAGE_TAG}
+    
+    - name: Deploy to AKS
+      run: |
+        az aks get-credentials -g vm2cloud-rg -n vm2cloud-aks --overwrite-existing
+        sed -i "s|__ACR__|vm2cloudacr|g" k8s/deployment.yaml
+        sed -i "s|__TAG__|${{ github.sha }}|g" k8s/deployment.yaml
+        kubectl apply -f k8s/deployment.yaml -n vm2cloud
+        kubectl apply -f k8s/service.yaml -n vm2cloud
+        kubectl rollout status deploy/vm2cloud-demo -n vm2cloud --timeout=180s
