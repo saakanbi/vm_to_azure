@@ -27,7 +27,10 @@ jobs:
     - name: Login to Azure
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        client-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+        tenant-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
+        subscription-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+        client-secret: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
     
     - name: Login to ACR
       run: az acr login --name vm2cloudacr
