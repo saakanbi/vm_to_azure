@@ -53,7 +53,7 @@ stages:
         command: 'buildAndPush'
         repository: 'vm2cloud-demo'
         dockerfile: 'app/Dockerfile'
-        containerRegistry: 'AzureContainerRegistryConnection'
+        containerRegistry: 'acr-connection'
         tags: |
           $(IMAGE_TAG)
 
@@ -70,7 +70,7 @@ stages:
           - task: AzureCLI@2
             displayName: Get AKS Credentials
             inputs:
-              azureSubscription: 'AzureServiceConnection'
+              azureSubscription: 'azure-connection'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -84,7 +84,7 @@ stages:
           - script: |
               sed -i "s|__ACR__|$(ACR)|g" k8s/deployment.yaml
               sed -i "s|__TAG__|$(Build.SourceVersion)|g" k8s/deployment.yaml
-              kubectl apply -f k8s/deployment.yaml
-              kubectl apply -f k8s/service.yaml
-              kubectl rollout status deploy/vm2cloud-demo --timeout=180s
+              kubectl apply -f k8s/deployment.yaml -n vm2cloud
+              kubectl apply -f k8s/service.yaml -n vm2cloud
+              kubectl rollout status deploy/vm2cloud-demo -n vm2cloud --timeout=180s
             displayName: kubectl apply & wait
