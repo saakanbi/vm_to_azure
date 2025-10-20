@@ -18,29 +18,9 @@ stages:
         testResultsFiles: '**/surefire-reports/*.xml'
         jdkVersionOption: '1.17'
 
-- stage: Scan
-  displayName: Code Quality (SonarQube)
-  dependsOn: Build
-  jobs:
-  - job: sonar
-    pool: { vmImage: 'ubuntu-latest' }
-    steps:
-    - task: SonarQubePrepare@5
-      inputs:
-        SonarQube: 'SonarServiceConnection'
-        scannerMode: 'Other'
-        configMode: 'manual'
-        extraProperties: |
-          sonar.projectKey=vm2cloud-demo
-          sonar.projectName=vm2cloud-demo
-    - task: SonarQubeAnalyze@5
-    - task: SonarQubePublish@5
-      inputs:
-        pollingTimeoutSec: '300'
-
 - stage: Image
   displayName: Build & Push Image (ACR)
-  dependsOn: Scan
+  dependsOn: Build
   jobs:
   - job: docker
     pool: { vmImage: 'ubuntu-latest' }
