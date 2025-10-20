@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: web
-        image: __ACR__.azurecr.io/vm2cloud-demo:__TAG__
+        image: vm2cloudacr.azurecr.io/vm2cloud-demo:v1
         ports:
         - containerPort: 8080
         readinessProbe:
